@@ -110,7 +110,7 @@ PACCHETTI = [
     },
 ]
 
-LARGHEZZA, ALTEZZA = 1280, 760
+LARGHEZZA, ALTEZZA = 1440, 900
 BARRA = 248
 TESTA = 64
 MESSAGGIO_H = 36
@@ -957,8 +957,9 @@ class PackOpener:
 
 # --- Disegno ----------------------------------------------------------------
 
-def _font(dimensione, grassetto=False):
-    font = pygame.font.SysFont("dejavusans", dimensione, bold=grassetto)
+def _font(dimensione, grassetto=False, serif=False):
+    famiglia = "liberationserif" if serif else "inter"
+    font = pygame.font.SysFont(famiglia, dimensione, bold=grassetto)
     if font is None:
         font = pygame.font.Font(None, dimensione)
     return font
@@ -1022,11 +1023,14 @@ class UIManager:
         pygame.display.set_caption("Vault & Packs")
         self.schermo = schermo or pygame.display.set_mode((LARGHEZZA, ALTEZZA))
         self.clock = pygame.time.Clock()
-        self.font = _font(18)
-        self.font_piccolo = _font(14)
-        self.font_grande = _font(28, True)
-        self.font_titolo = _font(22, True)
+        self.font = _font(17)
+        self.font_piccolo = _font(13)
+        self.font_grande = _font(30, True, serif=True)
+        self.font_titolo = _font(26, True, serif=True)
+        self.font_medio = _font(18, True, serif=True)
+        self.tempo = 0.0
         self.stato = stato or GameState.carica()
+        self.sfondo = self._prepara_sfondo()
         self.scheda = "casa"
         self.modalita = None
         self.scavo = None
@@ -1098,6 +1102,7 @@ class UIManager:
             return
 
     def _aggiorna(self, dt):
+        self.tempo += dt
         if self.scasso and self.modalita == "scasso":
             self.scasso.aggiorna(dt)
             if self.scasso.finita and not self.scasso.risolta:
@@ -1193,29 +1198,48 @@ class UIManager:
         self.apertura = PackOpener(pacchetto_id, ids)
         self.scheda = "negozio"
 
+    def _prepara_sfondo(self):
+        """Sfondo sfumato, una volta sola: velluto scuro e un filo di polvere d'oro."""
+        superficie = pygame.Surface((LARGHEZZA, ALTEZZA))
+        for y in range(ALTEZZA):
+            t = y / ALTEZZA
+            colore = (int(6 + 10 * t), int(10 + 16 * t), int(20 + 18 * t))
+            pygame.draw.line(superficie, colore, (0, y), (LARGHEZZA, y))
+        velo = pygame.Surface((LARGHEZZA, ALTEZZA), pygame.SRCALPHA)
+        for i in range(110):
+            alfa = int(150 * (1 - i / 110) ** 2)
+            pygame.draw.rect(velo, (0, 0, 0, alfa), (i, i, LARGHEZZA - 2 * i, ALTEZZA - 2 * i), 1)
+        superficie.blit(velo, (0, 0))
+        caso = random.Random(11)
+        for _ in range(90):
+            punto = (caso.randrange(LARGHEZZA), caso.randrange(ALTEZZA))
+            pygame.draw.circle(superficie, (196, 164, 92), punto, 1)
+        return superficie
+
     def _pulsante(self, rect, testo, funzione, attivo=True, primario=False, ritagliato=False):
         hover = attivo and rect.collidepoint(self.mouse)
+        disegno = rect.move(0, -1) if hover and attivo else rect
         if not attivo:
-            sfondo = (30, 41, 59)
-            bordo = (71, 85, 105)
-            colore = (100, 116, 139)
+            riempi, bordo, colore = (24, 30, 42), (55, 65, 80), (110, 120, 136)
         elif primario:
-            sfondo = (120, 86, 18) if hover else (146, 100, 14)
-            bordo = ORO
-            colore = (255, 251, 235)
+            riempi = (186, 132, 28) if hover else (154, 104, 18)
+            bordo, colore = (255, 226, 150), (255, 248, 230)
         else:
-            sfondo = (71, 85, 105) if hover else (51, 65, 85)
-            bordo = (226, 232, 240) if hover else (203, 213, 225)
-            colore = TESTO
-        pygame.draw.rect(self.schermo, sfondo, rect, border_radius=8)
-        pygame.draw.rect(self.schermo, bordo, rect, width=1, border_radius=8)
+            riempi = (58, 74, 98) if hover else (40, 54, 74)
+            bordo, colore = (214, 196, 150), TESTO
+        pygame.draw.rect(self.schermo, (4, 6, 12), disegno.move(0, 3), border_radius=10)
+        pygame.draw.rect(self.schermo, riempi, disegno, border_radius=10)
+        pygame.draw.line(self.schermo, (255, 255, 255), (disegno.x + 12, disegno.y + 1), (disegno.right - 12, disegno.y + 1))
+        pygame.draw.rect(self.schermo, bordo, disegno, width=1, border_radius=10)
         etichetta = self.font.render(testo, True, colore)
-        self.schermo.blit(etichetta, etichetta.get_rect(center=rect.center))
+        self.schermo.blit(etichetta, etichetta.get_rect(center=disegno.center))
         self.hit.append((rect, funzione, attivo, ritagliato))
 
-    def _pannello(self, rect, bordo=None):
-        pygame.draw.rect(self.schermo, PANNELLO, rect, border_radius=12)
-        pygame.draw.rect(self.schermo, bordo or PANNELLO_2, rect, width=1, border_radius=12)
+    def _pannello(self, rect, bordo=None, riempi=None):
+        pygame.draw.rect(self.schermo, (3, 6, 14), rect.move(0, 5), border_radius=18)
+        pygame.draw.rect(self.schermo, riempi or (18, 27, 44), rect, border_radius=18)
+        pygame.draw.line(self.schermo, (70, 86, 112), (rect.x + 18, rect.y + 1), (rect.right - 18, rect.y + 1))
+        pygame.draw.rect(self.schermo, bordo or (92, 74, 42), rect, width=1, border_radius=18)
 
     def _testo(self, testo, pos, font=None, colore=TESTO):
         font = font or self.font
@@ -1233,22 +1257,48 @@ class UIManager:
             y += font.get_height() + 2
         return y
 
-    def _icona(self, cimelio, rect):
-        pygame.draw.rect(self.schermo, (15, 23, 42), rect, border_radius=8)
-        pygame.draw.rect(self.schermo, COLORE_RARITA[cimelio.rarita], rect, width=2, border_radius=8)
-        raggio = max(6, min(rect.w, rect.h) // 2 - 8)
-        disegna_forma(
-            self.schermo,
-            cimelio.forma,
-            COLORE_SET[cimelio.insieme],
-            rect.center,
-            raggio,
-        )
+    def _medaglione(self, cimelio, centro, raggio, spento=False):
+        """Ritratto tondo: anello della rarità, smalto del set, simbolo al centro."""
+        rarita = (78, 86, 98) if spento else COLORE_RARITA[cimelio.rarita]
+        smalto = (62, 70, 82) if spento else COLORE_SET[cimelio.insieme]
+        pygame.draw.circle(self.schermo, (6, 8, 14), centro, raggio + 4)
+        pygame.draw.circle(self.schermo, rarita, centro, raggio + 2, 3)
+        pygame.draw.circle(self.schermo, (14, 18, 30), centro, raggio - 2)
+        chiaro = tuple(min(255, canale + 55) for canale in smalto)
+        pygame.draw.circle(self.schermo, chiaro, centro, max(4, raggio - 8))
+        pygame.draw.circle(self.schermo, (16, 20, 32), centro, max(3, raggio - 14))
+        disegna_forma(self.schermo, cimelio.forma, smalto, centro, max(4, raggio // 2))
+        arco = pygame.Rect(centro[0] - raggio, centro[1] - raggio, raggio * 2, raggio * 2)
+        pygame.draw.arc(self.schermo, (255, 236, 196), arco, 0.5, 2.3, 2)
+
+    def _icona(self, cimelio, rect, spento=False):
+        self._medaglione(cimelio, rect.center, max(8, min(rect.w, rect.h) // 2 - 2), spento)
+
+    def _righe_centrate(self, testo, cx, y, larghezza, font, colore, massimo=2):
+        for riga in spezza(font, testo, larghezza)[:massimo]:
+            immagine = font.render(riga, True, colore)
+            self.schermo.blit(immagine, immagine.get_rect(midtop=(cx, y)))
+            y += font.get_height() + 1
+        return y
+
+    def _glifo_nav(self, tipo, centro, colore):
+        x, y = centro
+        if tipo == "casa":
+            pygame.draw.polygon(self.schermo, colore, [(x, y - 7), (x - 9, y + 1), (x + 9, y + 1)])
+            pygame.draw.rect(self.schermo, colore, (x - 5, y + 1, 10, 7))
+        elif tipo == "negozio":
+            pygame.draw.rect(self.schermo, colore, (x - 8, y - 6, 16, 13), width=2, border_radius=2)
+            pygame.draw.line(self.schermo, colore, (x - 8, y - 1), (x + 8, y - 1))
+        elif tipo == "lavori":
+            pygame.draw.line(self.schermo, colore, (x - 7, y + 6), (x + 4, y - 7), 2)
+            pygame.draw.circle(self.schermo, colore, (x + 6, y - 7), 3, 1)
+        else:
+            pygame.draw.polygon(self.schermo, colore, [(x, y - 8), (x + 7, y), (x, y + 8), (x - 7, y)])
 
     def _disegna(self):
         self.hit = []
         self.mouse = pygame.mouse.get_pos()
-        self.schermo.fill(SFONDO)
+        self.schermo.blit(self.sfondo, (0, 0))
         self._barra()
         self._testata()
         if self.selettore is not None:
@@ -1293,9 +1343,14 @@ class UIManager:
         self.reset_fino_a = 0
 
     def _barra(self):
-        pygame.draw.rect(self.schermo, (2, 6, 23), (0, 0, BARRA, ALTEZZA))
-        self._testo("Vault & Packs", (20, 22), self.font_titolo, ORO)
-        self._testo("Collezione locale", (20, 52), self.font_piccolo, SMORZATO)
+        pygame.draw.rect(self.schermo, (8, 10, 18), (0, 0, BARRA, ALTEZZA))
+        pygame.draw.line(self.schermo, (120, 92, 42), (BARRA - 1, 0), (BARRA - 1, ALTEZZA))
+        pygame.draw.circle(self.schermo, (28, 22, 12), (BARRA // 2, 58), 28)
+        pygame.draw.circle(self.schermo, ORO, (BARRA // 2, 58), 28, 2)
+        lettera = self.font_titolo.render("V", True, ORO)
+        self.schermo.blit(lettera, lettera.get_rect(center=(BARRA // 2, 58)))
+        self._righe_centrate("Vault & Packs", BARRA // 2, 98, BARRA - 24, self.font_medio, ORO, 2)
+        self._righe_centrate("sala privata", BARRA // 2, 126, BARRA - 24, self.font_piccolo, SMORZATO, 1)
         voci = [
             ("casa", "La mia casa"),
             ("negozio", "Negozio"),
@@ -1304,151 +1359,127 @@ class UIManager:
         ]
         blocco = self.modalita is not None or self.apertura is not None
         for indice, (scheda, etichetta) in enumerate(voci):
-            rect = pygame.Rect(16, 110 + indice * 58, BARRA - 32, 46)
+            rect = pygame.Rect(16, 176 + indice * 62, BARRA - 32, 52)
             attivo = scheda == self.scheda and self.modalita is None
+            colore = ORO if attivo else (SMORZATO if blocco else TESTO)
             if attivo:
-                pygame.draw.rect(self.schermo, (69, 52, 12), rect, border_radius=8)
-                pygame.draw.rect(self.schermo, ORO, rect, width=1, border_radius=8)
-                colore = ORO
-            else:
-                colore = SMORZATO if blocco else TESTO
-            self._testo(etichetta, (rect.x + 14, rect.y + 12), self.font, colore)
+                pygame.draw.rect(self.schermo, (48, 36, 14), rect, border_radius=12)
+                pygame.draw.rect(self.schermo, ORO, rect, width=1, border_radius=12)
+            elif rect.collidepoint(self.mouse) and not blocco:
+                pygame.draw.rect(self.schermo, (24, 32, 48), rect, border_radius=12)
+            self._glifo_nav(scheda, (rect.x + 24, rect.centery), colore)
+            self._testo(etichetta, (rect.x + 46, rect.centery - 9), self.font, colore)
             if not blocco:
                 self.hit.append((rect, lambda s=scheda: self._vai(s), True, False))
         armato = pygame.time.get_ticks() < self.reset_fino_a
         testo = "Conferma reset" if armato else "Reset partita"
         urgente = self.stato.bloccato_senza_cimeli()
         self._pulsante(
-            pygame.Rect(16, ALTEZZA - 68, BARRA - 32, 44),
+            pygame.Rect(16, ALTEZZA - 72, BARRA - 32, 46),
             testo,
             self._reset,
             primario=armato or urgente,
         )
 
     def _testata(self):
-        rect = pygame.Rect(BARRA, 0, LARGHEZZA - BARRA, TESTA)
-        pygame.draw.rect(self.schermo, (15, 23, 42), rect)
-        pygame.draw.line(self.schermo, (51, 65, 85), (BARRA, TESTA - 1), (LARGHEZZA, TESTA - 1))
-        colore_monete = PERICOLO if self.stato.in_rosso() else ORO
-        pillole = [
-            (f"Monete  {self.stato.monete}", colore_monete),
-            (f"Prestigio  {self.stato.case.prestigio()}", TESTO),
-            (self.stato.case.casa()["nome"], TESTO),
-            (f"Affitto tra  {AZIONI_PER_AFFITTO - self.stato.azioni}", SMORZATO),
+        pygame.draw.rect(self.schermo, (10, 14, 24), (BARRA, 0, LARGHEZZA - BARRA, TESTA))
+        pygame.draw.line(self.schermo, (92, 74, 42), (BARRA, TESTA - 1), (LARGHEZZA, TESTA - 1))
+        colore_monete = PERICOLO if self.stato.in_rosso() else (255, 220, 140)
+        voci = [
+            ("Monete", str(self.stato.monete), colore_monete),
+            ("Prestigio", str(self.stato.case.prestigio()), (226, 214, 180)),
+            ("Casa", self.stato.case.casa()["nome"], TESTO),
+            ("Affitto", f"tra {AZIONI_PER_AFFITTO - self.stato.azioni}", SMORZATO),
         ]
-        x = BARRA + 20
-        for testo, colore in pillole:
-            immagine = self.font_piccolo.render(testo, True, colore)
-            scatola = pygame.Rect(x, 16, immagine.get_width() + 22, 32)
-            pygame.draw.rect(self.schermo, PANNELLO, scatola, border_radius=8)
-            self.schermo.blit(immagine, (scatola.x + 11, scatola.y + 8))
-            x = scatola.right + 10
-        fascia = pygame.Rect(BARRA, TESTA, LARGHEZZA - BARRA, MESSAGGIO_H)
-        pygame.draw.rect(self.schermo, (15, 23, 42), fascia)
-        colore = PERICOLO if self.stato.messaggio_negativo or self.stato.in_rosso() else SMORZATO
+        x = BARRA + 22
+        for etichetta, valore, colore in voci:
+            titolo = self.font_piccolo.render(etichetta.upper(), True, (120, 106, 78))
+            cifra = self.font.render(valore, True, colore)
+            scatola = pygame.Rect(x, 10, max(titolo.get_width(), cifra.get_width()) + 28, 44)
+            pygame.draw.rect(self.schermo, (18, 24, 38), scatola, border_radius=12)
+            pygame.draw.rect(self.schermo, (70, 58, 36), scatola, width=1, border_radius=12)
+            self.schermo.blit(titolo, (scatola.x + 14, scatola.y + 4))
+            self.schermo.blit(cifra, (scatola.x + 14, scatola.y + 20))
+            x = scatola.right + 12
+        colore = PERICOLO if self.stato.messaggio_negativo or self.stato.in_rosso() else (196, 184, 156)
         testo = self.stato.messaggio
         if self.stato.bloccato_senza_cimeli():
             testo = "Non puoi pagare un lavoro e non hai cimeli da vendere. Resetta la partita."
             colore = PERICOLO
-        self._paragrafo(testo, pygame.Rect(BARRA + 20, TESTA + 8, LARGHEZZA - BARRA - 40, 24), self.font_piccolo, colore)
+        self._paragrafo(testo, pygame.Rect(BARRA + 24, TESTA + 8, LARGHEZZA - BARRA - 48, 24), self.font_piccolo, colore)
 
     def _disegna_casa(self, interattiva):
         casa = self.stato.case.casa()
-        sinistra = pygame.Rect(self.contenuto.x + 16, self.contenuto.y + 16, 640, self.contenuto.h - 32)
-        self._pannello(sinistra)
-        self._testo(casa["nome"], (sinistra.x + 18, sinistra.y + 16), self.font_titolo, ORO)
-        info = (
-            f"Slot {casa['slot']}   ·   affitto {casa['affitto']}   ·   "
-            f"rendita +{self.stato.case.rendita()} a lavoro chiuso"
-        )
-        self._testo(info, (sinistra.x + 18, sinistra.y + 52), self.font_piccolo, SMORZATO)
+        righe = max(1, math.ceil(len(self.stato.esposti) / 5))
+        altezza_muro = min(self.contenuto.h - 28, 124 + righe * 182)
+        sinistra = pygame.Rect(self.contenuto.x + 18, self.contenuto.y + 14, 860, altezza_muro)
+        self._pannello(sinistra, (120, 92, 48))
+        self._testo(casa["nome"], (sinistra.x + 22, sinistra.y + 16), self.font_titolo, (255, 226, 160))
+        info = f"{casa['slot']} cornici   ·   affitto {casa['affitto']}   ·   rendita +{self.stato.case.rendita()}"
+        self._testo(info, (sinistra.x + 22, sinistra.y + 54), self.font_piccolo, SMORZATO)
         sinergie = self.stato.case.set_in_sinergia()
-        if sinergie:
-            self._testo(
-                "Sinergia ×2: " + ", ".join(sorted(sinergie)),
-                (sinistra.x + 18, sinistra.y + 74),
-                self.font_piccolo,
-                ORO,
-            )
-        else:
-            self._testo(
-                "Tre pezzi dello stesso set, esposti insieme, raddoppiano rendita e prestigio.",
-                (sinistra.x + 18, sinistra.y + 74),
-                self.font_piccolo,
-                SMORZATO,
-            )
+        nota = "Sinergia ×2  ·  " + ", ".join(sorted(sinergie)) if sinergie else "Tre pezzi dello stesso set accendono la cornice d'oro."
+        self._testo(nota, (sinistra.x + 22, sinistra.y + 74), self.font_piccolo, ORO if sinergie else SMORZATO)
         self._griglia_slot(sinistra, interattiva)
-        destra = pygame.Rect(sinistra.right + 16, sinistra.y, self.contenuto.right - sinistra.right - 32, 280)
-        self._pannello(destra)
-        self._testo("Immobile successivo", (destra.x + 18, destra.y + 16), self.font, ORO)
+        destra = pygame.Rect(sinistra.right + 16, sinistra.y, self.contenuto.right - sinistra.right - 34, 320)
+        self._pannello(destra, ORO)
+        self._testo("Prossima sala", (destra.x + 20, destra.y + 18), self.font_medio, ORO)
         prossima = self.stato.case.prossima()
         if prossima is None:
             self._paragrafo(
-                "Il museo è la casa più grande. Non c'è un altro indirizzo.",
-                pygame.Rect(destra.x + 18, destra.y + 56, destra.w - 36, 80),
+                "Il museo è l'ultima stanza. Non c'è un indirizzo oltre.",
+                pygame.Rect(destra.x + 20, destra.y + 64, destra.w - 40, 80),
             )
         else:
-            self._testo(prossima["nome"], (destra.x + 18, destra.y + 52), self.font, TESTO)
-            manca_monete = max(0, prossima["costo"] - self.stato.monete)
-            manca_prestigio = max(0, prossima["prestigio"] - self.stato.case.prestigio())
-            dettaglio = (
-                f"{prossima['slot']} slot  ·  {prossima['costo']} monete  ·  "
-                f"prestigio {prossima['prestigio']}"
+            self._testo(prossima["nome"], (destra.x + 20, destra.y + 58), self.font, TESTO)
+            self._testo(
+                f"{prossima['slot']} cornici  ·  {prossima['costo']} monete  ·  prestigio {prossima['prestigio']}",
+                (destra.x + 20, destra.y + 92),
+                self.font_piccolo,
+                SMORZATO,
             )
-            self._testo(dettaglio, (destra.x + 18, destra.y + 82), self.font_piccolo, SMORZATO)
-            if manca_monete or manca_prestigio:
-                mancanze = []
-                if manca_monete:
-                    mancanze.append(f"{manca_monete} monete")
-                if manca_prestigio:
-                    mancanze.append(f"{manca_prestigio} prestigio")
-                self._paragrafo(
-                    "Ti manca " + " e ".join(mancanze) + ".",
-                    pygame.Rect(destra.x + 18, destra.y + 112, destra.w - 36, 50),
-                    colore=PERICOLO,
-                )
-            else:
-                self._testo("Puoi comprarla.", (destra.x + 18, destra.y + 116), self.font_piccolo, OK)
+            self._barra_obiettivo(destra.x + 20, destra.y + 128, destra.w - 40, self.stato.monete, prossima["costo"], "Monete")
+            self._barra_obiettivo(destra.x + 20, destra.y + 168, destra.w - 40, self.stato.case.prestigio(), prossima["prestigio"], "Prestigio")
             self._pulsante(
-                pygame.Rect(destra.x + 18, destra.bottom - 64, destra.w - 36, 44),
-                f"Compra · {prossima['costo']}",
+                pygame.Rect(destra.x + 20, destra.bottom - 68, destra.w - 40, 46),
+                f"Prendi le chiavi  ·  {prossima['costo']}",
                 self.stato.case.compra,
                 attivo=interattiva and self.stato.case.puo_comprare(),
                 primario=True,
             )
 
+    def _barra_obiettivo(self, x, y, larghezza, valore, richiesto, etichetta):
+        rapporto = 0 if richiesto <= 0 else min(1, valore / richiesto)
+        self._testo(f"{etichetta}  {valore}/{richiesto}", (x, y), self.font_piccolo, SMORZATO)
+        pista = pygame.Rect(x, y + 20, larghezza, 8)
+        pygame.draw.rect(self.schermo, (8, 12, 22), pista, border_radius=4)
+        if rapporto:
+            pygame.draw.rect(self.schermo, ORO, (pista.x, pista.y, int(pista.w * rapporto), pista.h), border_radius=4)
+
     def _griglia_slot(self, pannello, interattiva):
         colonne = 5
-        lato = 108
-        gap = 10
-        origine_x = pannello.x + 18
+        lato_x, lato_y, gap = 150, 168, 14
+        origine_x = pannello.x + 22
         origine_y = pannello.y + 108
         sinergie = self.stato.case.set_in_sinergia()
         for indice, id_ in enumerate(self.stato.esposti):
             col = indice % colonne
             riga = indice // colonne
-            rect = pygame.Rect(origine_x + col * (lato + gap), origine_y + riga * (lato + gap), lato, lato)
-            if id_ and CATALOGO[id_].insieme in sinergie:
-                pygame.draw.rect(self.schermo, (69, 52, 12), rect, border_radius=10)
-                pygame.draw.rect(self.schermo, ORO, rect, width=2, border_radius=10)
-            else:
-                self._pannello(rect)
+            rect = pygame.Rect(origine_x + col * (lato_x + gap), origine_y + riga * (lato_y + gap), lato_x, lato_y)
+            acceso = bool(id_) and CATALOGO[id_].insieme in sinergie
+            bordo = ORO if acceso else (90, 74, 46)
+            self._pannello(rect, bordo, (28, 22, 14) if acceso else (16, 22, 34))
             if id_:
                 cimelio = CATALOGO[id_]
-                icona = pygame.Rect(rect.x + 30, rect.y + 10, 48, 48)
-                self._icona(cimelio, icona)
-                nome = cimelio.nome
-                while nome and self.font_piccolo.size(nome + "…")[0] > lato - 8:
-                    nome = nome[:-1]
-                if nome != cimelio.nome:
-                    nome += "…"
-                etichetta = self.font_piccolo.render(nome, True, TESTO)
-                self.schermo.blit(etichetta, etichetta.get_rect(midtop=(rect.centerx, rect.bottom - 28)))
+                self._medaglione(cimelio, (rect.centerx, rect.y + 58), 36)
+                self._righe_centrate(cimelio.nome, rect.centerx, rect.y + 104, rect.w - 16, self.font_piccolo, TESTO)
                 if interattiva:
                     self.hit.append((rect, lambda s=indice: self.stato.case.togli(s), True, False))
             else:
-                piu = self.font_grande.render("+", True, SMORZATO)
-                self.schermo.blit(piu, piu.get_rect(center=rect.center))
+                pygame.draw.circle(self.schermo, (40, 48, 64), (rect.centerx, rect.y + 62), 28, 1)
+                piu = self.font_medio.render("+", True, (168, 148, 96))
+                self.schermo.blit(piu, piu.get_rect(center=(rect.centerx, rect.y + 62)))
+                self._righe_centrate("esporre", rect.centerx, rect.y + 112, rect.w - 16, self.font_piccolo, SMORZATO)
                 if interattiva:
                     self.hit.append((rect, lambda s=indice: self._apri_selettore(s), True, False))
 
@@ -1523,23 +1554,31 @@ class UIManager:
         if self.apertura:
             self._disegna_apertura()
             return
-        self._testo("Tre pacchetti, tre cimeli ciascuno.", (self.contenuto.x + 24, self.contenuto.y + 18), self.font, SMORZATO)
+        self._testo("Tre bustine, tre cimeli.", (self.contenuto.x + 28, self.contenuto.y + 16), self.font_titolo, (255, 226, 160))
         if self.stato.in_rosso():
-            self._testo("In rosso non si compra. Vendi un cimelio dalla collezione.", (self.contenuto.x + 24, self.contenuto.y + 46), self.font_piccolo, PERICOLO)
-        larghezza = (self.contenuto.w - 64) // 3
+            self._testo("In rosso non si compra. Vendi un pezzo dalla collezione.", (self.contenuto.x + 28, self.contenuto.y + 56), self.font_piccolo, PERICOLO)
+        else:
+            self._testo("Tagli il sigillo, il bordo prende il colore della rarità più alta.", (self.contenuto.x + 28, self.contenuto.y + 56), self.font_piccolo, SMORZATO)
+        vesti = [
+            ((86, 58, 36), (214, 170, 96)),
+            ((32, 58, 72), (232, 204, 140)),
+            ((78, 22, 36), (225, 70, 96)),
+        ]
+        larghezza = (self.contenuto.w - 80) // 3
         for indice, pacchetto in enumerate(PACCHETTI):
-            rect = pygame.Rect(self.contenuto.x + 16 + indice * (larghezza + 16), self.contenuto.y + 80, larghezza, 340)
-            self._pannello(rect)
-            self._testo(pacchetto["nome"], (rect.x + 16, rect.y + 18), self.font, ORO)
-            self._testo(f"{pacchetto['costo']} monete", (rect.x + 16, rect.y + 52), self.font_grande, TESTO)
-            self._paragrafo(pacchetto["testo"], pygame.Rect(rect.x + 16, rect.y + 110, rect.w - 32, 70))
-            self._paragrafo(
-                "Si taglia il sigillo col mouse. Il bordo prende il colore della rarità più alta.",
-                pygame.Rect(rect.x + 16, rect.y + 180, rect.w - 32, 70),
-            )
+            rect = pygame.Rect(self.contenuto.x + 24 + indice * (larghezza + 16), self.contenuto.y + 96, larghezza, 520)
+            stoffa, filo = vesti[indice]
+            self._pannello(rect, filo, stoffa)
+            nastro = pygame.Rect(rect.centerx - 18, rect.y + 28, 36, 150)
+            pygame.draw.rect(self.schermo, filo, nastro, border_radius=4)
+            pygame.draw.circle(self.schermo, (120, 28, 36), (rect.centerx, rect.y + 196), 34)
+            pygame.draw.circle(self.schermo, (255, 214, 150), (rect.centerx, rect.y + 196), 34, 2)
+            self._righe_centrate(pacchetto["nome"], rect.centerx, rect.y + 250, rect.w - 36, self.font_medio, (255, 236, 200))
+            self._righe_centrate(f"{pacchetto['costo']} monete", rect.centerx, rect.y + 292, rect.w - 36, self.font_grande, TESTO)
+            self._paragrafo(pacchetto["testo"], pygame.Rect(rect.x + 24, rect.y + 350, rect.w - 48, 70), self.font_piccolo, (232, 220, 196))
             puo = (not self.stato.in_rosso()) and self.stato.monete >= pacchetto["costo"]
             self._pulsante(
-                pygame.Rect(rect.x + 16, rect.bottom - 64, rect.w - 32, 44),
+                pygame.Rect(rect.x + 24, rect.bottom - 72, rect.w - 48, 48),
                 "Compra e apri",
                 lambda p=pacchetto["id"]: self._compra(p),
                 attivo=puo,
@@ -1553,18 +1592,19 @@ class UIManager:
         self._pannello(rect, colore)
         self._testo(apertura.pacchetto["nome"], (rect.x + 24, rect.y + 16), self.font_titolo, ORO)
         if apertura.fase == "taglio":
-            self._testo("Trascina o clicca sul sigillo per tagliarlo.", (rect.x + 24, rect.y + 56), self.font, SMORZATO)
-            pacco = pygame.Rect(rect.centerx - 160, rect.y + 120, 320, 220)
-            pygame.draw.rect(self.schermo, (69, 52, 12), pacco, border_radius=12)
-            pygame.draw.rect(self.schermo, ORO, pacco, width=2, border_radius=12)
-            sigillo = pygame.Rect(pacco.x + 24, pacco.centery - 16, pacco.w - 48, 32)
+            self._testo("Trascina o clicca la ceralacca.", (rect.x + 28, rect.y + 58), self.font, SMORZATO)
+            pacco = pygame.Rect(rect.centerx - 170, rect.y + 130, 340, 280)
+            pygame.draw.rect(self.schermo, (62, 40, 24), pacco, border_radius=16)
+            pygame.draw.rect(self.schermo, (214, 170, 90), pacco, width=2, border_radius=16)
+            pygame.draw.rect(self.schermo, (214, 170, 90), (pacco.centerx - 16, pacco.y + 24, 32, pacco.h - 48))
+            sigillo = pygame.Rect(pacco.x + 36, pacco.centery - 28, pacco.w - 72, 56)
             apertura.sigillo = sigillo
+            pygame.draw.ellipse(self.schermo, (128, 28, 36), sigillo)
             progresso = min(1.0, apertura.taglio / TAGLIO_SIGILLO)
-            pieno = pygame.Rect(sigillo.x, sigillo.y, int(sigillo.w * progresso), sigillo.h)
-            pygame.draw.rect(self.schermo, (120, 53, 15), sigillo, border_radius=6)
-            if pieno.w:
-                pygame.draw.rect(self.schermo, ORO, pieno, border_radius=6)
-            self._testo("SIGILLO", (sigillo.x + 8, sigillo.y + 6), self.font_piccolo, SFONDO)
+            if progresso:
+                taglio = pygame.Rect(sigillo.x, sigillo.y, int(sigillo.w * progresso), sigillo.h)
+                pygame.draw.ellipse(self.schermo, (255, 214, 140), taglio)
+            self._righe_centrate("SIGILLO", sigillo.centerx, sigillo.centery - 8, sigillo.w - 8, self.font_piccolo, (40, 12, 14))
         else:
             apertura.sigillo = pygame.Rect(0, 0, 0, 0)
             centro = (rect.centerx, rect.y + 150)
@@ -1598,22 +1638,19 @@ class UIManager:
 
     def _carte(self, rect, apertura):
         for indice in range(3):
-            carta = pygame.Rect(rect.x + 48 + indice * 210, rect.y + 250, 190, 150)
+            carta = pygame.Rect(rect.x + 70 + indice * 280, rect.y + 150, 250, 340)
             cimelio = CATALOGO[apertura.ids[indice]]
             if indice < apertura.mostrate:
-                self._pannello(carta, COLORE_RARITA[cimelio.rarita])
-                self._icona(cimelio, pygame.Rect(carta.x + 12, carta.y + 14, 48, 48))
-                nome = cimelio.nome
-                while nome and self.font_piccolo.size(nome + "…")[0] > carta.w - 78:
-                    nome = nome[:-1]
-                if nome != cimelio.nome:
-                    nome += "…"
-                self._testo(nome, (carta.x + 68, carta.y + 16), self.font_piccolo, TESTO)
-                self._testo(cimelio.rarita, (carta.x + 68, carta.y + 38), self.font_piccolo, COLORE_RARITA[cimelio.rarita])
-                self._testo(cimelio.insieme, (carta.x + 12, carta.y + 112), self.font_piccolo, SMORZATO)
+                self._pannello(carta, COLORE_RARITA[cimelio.rarita], (16, 20, 32))
+                pygame.draw.rect(self.schermo, COLORE_RARITA[cimelio.rarita], (carta.x + 14, carta.y + 14, carta.w - 28, 6), border_radius=3)
+                self._medaglione(cimelio, (carta.centerx, carta.y + 110), 52)
+                self._righe_centrate(cimelio.nome, carta.centerx, carta.y + 180, carta.w - 28, self.font, TESTO)
+                self._righe_centrate(cimelio.rarita, carta.centerx, carta.y + 230, carta.w - 28, self.font_piccolo, COLORE_RARITA[cimelio.rarita])
+                self._righe_centrate(cimelio.insieme, carta.centerx, carta.y + 252, carta.w - 28, self.font_piccolo, SMORZATO)
             else:
-                self._pannello(carta, COLORE_RARITA[apertura.rarita] if indice == apertura.mostrate else PANNELLO_2)
-                punto = self.font_grande.render("?", True, SMORZATO)
+                bordo = COLORE_RARITA[apertura.rarita] if indice == apertura.mostrate else (60, 68, 84)
+                self._pannello(carta, bordo, (22, 18, 32))
+                punto = self.font_grande.render("?", True, (210, 190, 140))
                 self.schermo.blit(punto, punto.get_rect(center=carta.center))
             if indice == apertura.mostrate:
                 self.hit.append((carta, apertura.gira, True, False))
@@ -1643,9 +1680,9 @@ class UIManager:
         ]
         larghezza = (self.contenuto.w - 64) // 3
         for indice, (titolo, descrizione, livelli, avvia, campo) in enumerate(giochi):
-            rect = pygame.Rect(self.contenuto.x + 16 + indice * (larghezza + 16), self.contenuto.y + 52, larghezza, self.contenuto.h - 72)
+            rect = pygame.Rect(self.contenuto.x + 16 + indice * (larghezza + 16), self.contenuto.y + 52, larghezza, 430)
             self._pannello(rect)
-            self._testo(titolo, (rect.x + 16, rect.y + 16), self.font, ORO)
+            self._testo(titolo, (rect.x + 16, rect.y + 16), self.font_medio, ORO)
             self._paragrafo(descrizione, pygame.Rect(rect.x + 16, rect.y + 50, rect.w - 32, 70))
             for livello, dati in enumerate(livelli):
                 if campo == "tassa":
@@ -1692,41 +1729,44 @@ class UIManager:
                     scavo.lato - 3,
                 )
                 aperta = scavo.rivelate[y][x]
+                hover = rect.collidepoint(self.mouse) and not aperta and not scavo.risolta
                 if aperta and (x, y) in scavo.trappole:
-                    pygame.draw.rect(self.schermo, (127, 29, 29), rect, border_radius=4)
-                    self._testo("×", (rect.x + 16, rect.y + 12), self.font_grande, (254, 226, 226))
+                    pygame.draw.rect(self.schermo, (92, 18, 24), rect, border_radius=6)
+                    pygame.draw.circle(self.schermo, (255, 90, 90), rect.center, 8)
+                    pygame.draw.circle(self.schermo, (40, 8, 10), rect.center, 4)
                 elif scavo.finita and (x, y) in scavo.trappole:
-                    pygame.draw.rect(self.schermo, (69, 10, 10), rect, border_radius=4)
-                    self._testo("×", (rect.x + 16, rect.y + 12), self.font, PERICOLO)
+                    pygame.draw.rect(self.schermo, (48, 16, 20), rect, border_radius=6)
+                    pygame.draw.circle(self.schermo, (180, 50, 58), rect.center, 6)
                 elif aperta and (x, y) in scavo.pepite:
-                    pygame.draw.rect(self.schermo, (69, 52, 12), rect, border_radius=4)
-                    pygame.draw.circle(self.schermo, ORO, rect.center, 10)
+                    pygame.draw.rect(self.schermo, (36, 28, 14), rect, border_radius=6)
+                    pygame.draw.circle(self.schermo, (255, 206, 92), rect.center, 12)
+                    pygame.draw.circle(self.schermo, (255, 244, 200), (rect.centerx - 3, rect.centery - 3), 4)
                 elif aperta:
-                    pygame.draw.rect(self.schermo, CELLA_APERTA, rect, border_radius=4)
-                    pygame.draw.rect(self.schermo, PANNELLO_2, rect, width=1, border_radius=4)
+                    pygame.draw.rect(self.schermo, (18, 24, 36), rect, border_radius=6)
+                    pygame.draw.rect(self.schermo, (40, 50, 68), rect, width=1, border_radius=6)
                     if scavo.pronta:
                         n = scavo._trappole_vicine(x, y)
                         if n:
                             colore = {
-                                1: (96, 165, 250),
-                                2: (52, 211, 153),
-                                3: (248, 113, 113),
-                                4: (167, 139, 250),
-                                5: (251, 146, 60),
-                                6: (34, 211, 238),
+                                1: (120, 186, 255),
+                                2: (88, 214, 160),
+                                3: (255, 120, 120),
+                                4: (190, 150, 255),
+                                5: (255, 170, 90),
+                                6: (90, 220, 230),
                                 7: TESTO,
                                 8: SMORZATO,
                             }[n]
-                            etichetta = self.font.render(str(n), True, colore)
+                            etichetta = self.font_medio.render(str(n), True, colore)
                             self.schermo.blit(etichetta, etichetta.get_rect(center=rect.center))
                 else:
-                    pygame.draw.rect(self.schermo, CELLA_CHIUSA, rect, border_radius=4)
+                    tono = (78, 90, 112) if hover else (58, 70, 90)
+                    pygame.draw.rect(self.schermo, tono, rect, border_radius=6)
+                    pygame.draw.line(self.schermo, (150, 164, 186), (rect.x + 4, rect.y + 2), (rect.right - 6, rect.y + 2))
+                    pygame.draw.line(self.schermo, (28, 34, 48), (rect.x + 4, rect.bottom - 3), (rect.right - 6, rect.bottom - 3))
                     if scavo.bandiere[y][x]:
-                        pygame.draw.polygon(
-                            self.schermo,
-                            ORO,
-                            [(rect.centerx, rect.y + 10), (rect.centerx, rect.bottom - 10), (rect.right - 10, rect.centery)],
-                        )
+                        pygame.draw.line(self.schermo, (230, 220, 190), (rect.centerx - 6, rect.bottom - 8), (rect.centerx - 6, rect.y + 8), 2)
+                        pygame.draw.polygon(self.schermo, (214, 64, 72), [(rect.centerx - 6, rect.y + 8), (rect.centerx + 10, rect.y + 14), (rect.centerx - 6, rect.y + 20)])
                 if not scavo.risolta and not aperta:
                     self.hit.append((rect, lambda cx=x, cy=y: scavo.scava(cx, cy), True, False))
         lato_info = pygame.Rect(scavo.origine[0] + GRIGLIA * scavo.lato + 28, scavo.origine[1], 360, 420)
@@ -1765,25 +1805,29 @@ class UIManager:
             ORO,
         )
         self._testo("Premi Spazio quando il cursore è nel verde.", (self.contenuto.x + 24, self.contenuto.y + 48), self.font_piccolo, SMORZATO)
-        barra = pygame.Rect(self.contenuto.x + 48, self.contenuto.y + 220, self.contenuto.w - 96, 42)
-        pygame.draw.rect(self.schermo, (15, 23, 42), barra, border_radius=8)
-        pygame.draw.rect(self.schermo, PANNELLO_2, barra, width=1, border_radius=8)
+        alloggiamento = pygame.Rect(self.contenuto.x + 36, self.contenuto.y + 190, self.contenuto.w - 72, 110)
+        self._pannello(alloggiamento, (176, 140, 72), (42, 32, 18))
+        barra = pygame.Rect(alloggiamento.x + 28, alloggiamento.y + 36, alloggiamento.w - 56, 36)
+        pygame.draw.rect(self.schermo, (12, 10, 8), barra, border_radius=8)
         zona_x = barra.x + int((scasso.centro - scasso.mezza) * barra.w)
-        zona_w = max(4, int(scasso.mezza * 2 * barra.w))
-        pygame.draw.rect(self.schermo, VERDE_ZONA, (zona_x, barra.y + 4, zona_w, barra.h - 8), border_radius=4)
+        zona_w = max(6, int(scasso.mezza * 2 * barra.w))
+        pygame.draw.rect(self.schermo, (18, 90, 48), (zona_x - 4, barra.y - 2, zona_w + 8, barra.h + 4), border_radius=6)
+        pygame.draw.rect(self.schermo, (72, 220, 130), (zona_x, barra.y + 4, zona_w, barra.h - 8), border_radius=4)
         cursore_x = barra.x + int(scasso.pos * barra.w)
-        colore_cursore = OK if scasso.flash_ok and scasso.flash else PERICOLO if scasso.flash else ORO
-        pygame.draw.rect(self.schermo, colore_cursore, (cursore_x - 3, barra.y - 10, 6, barra.h + 20), border_radius=2)
+        colore_cursore = OK if scasso.flash_ok and scasso.flash else PERICOLO if scasso.flash else (255, 220, 140)
+        pygame.draw.polygon(self.schermo, colore_cursore, [(cursore_x, barra.y - 14), (cursore_x - 8, barra.y - 2), (cursore_x + 8, barra.y - 2)])
+        pygame.draw.line(self.schermo, colore_cursore, (cursore_x, barra.y), (cursore_x, barra.bottom), 3)
         for indice in range(scasso.cilindri):
-            centro = (self.contenuto.x + 80 + indice * 70, self.contenuto.y + 140)
+            centro = (self.contenuto.x + 90 + indice * 78, self.contenuto.y + 130)
             if indice < scasso.corrente:
-                colore = OK
+                colore = (88, 214, 150)
             elif indice == scasso.corrente and not scasso.finita:
                 colore = ORO
             else:
-                colore = PANNELLO_2
-            pygame.draw.circle(self.schermo, colore, centro, 18)
-            pygame.draw.circle(self.schermo, SFONDO, centro, 8)
+                colore = (70, 78, 92)
+            pygame.draw.circle(self.schermo, (10, 12, 18), centro, 24)
+            pygame.draw.circle(self.schermo, colore, centro, 22, 3)
+            pygame.draw.circle(self.schermo, colore, centro, 6)
         self._testo(f"Premio in palio: {scasso.premio}", (self.contenuto.x + 48, self.contenuto.y + 300), self.font, TESTO)
         self._testo(f"Tassa già pagata: {scasso.tassa}", (self.contenuto.x + 48, self.contenuto.y + 332), self.font_piccolo, SMORZATO)
         if scasso.risolta:
@@ -1845,65 +1889,86 @@ class UIManager:
 
     def _disegna_collezione(self):
         self.schermo.set_clip(self.contenuto)
-        y = self.contenuto.y + 16 - self.scroll
-        self._testo("Tre copie uguali si fondono nella rarità sopra. Il mitico si vende o si espone.", (self.contenuto.x + 20, y), self.font_piccolo, SMORZATO)
-        y += 36
         posseduti = [c for c in CATALOGO_LISTA if self.stato.inventario.get(c.id, 0) > 0]
         mancanti = [c for c in CATALOGO_LISTA if self.stato.inventario.get(c.id, 0) == 0]
+        ordine = posseduti + mancanti
+        colonne = 4
+        gap = 16
+        margine = 20
+        larghezza = (self.contenuto.w - margine * 2 - gap * (colonne - 1)) // colonne
+        altezza = 292
+        y0 = self.contenuto.y + 12 - self.scroll
+        self._testo("La collezione", (self.contenuto.x + margine, y0), self.font_titolo, (255, 226, 160))
+        self._testo(
+            "Tre copie uguali si fondono. Il mitico si vende o si espone.",
+            (self.contenuto.x + margine, y0 + 40),
+            self.font_piccolo,
+            SMORZATO,
+        )
         if not posseduti:
-            self._testo("L'inventario è vuoto.", (self.contenuto.x + 20, y), self.font, SMORZATO)
-            y += 40
-        for cimelio in posseduti:
-            y = self._riga_cimelio(cimelio, y, True)
-        y += 12
-        self._testo("Ancora da trovare", (self.contenuto.x + 20, y), self.font, SMORZATO)
-        y += 32
-        for cimelio in mancanti:
-            y = self._riga_cimelio(cimelio, y, False)
-        altezza = y + self.scroll - self.contenuto.y
-        self.scroll_massimo = max(0, altezza - self.contenuto.h + 16)
+            self._testo("Ancora nessuna carta in mano.", (self.contenuto.x + margine, y0 + 64), self.font, SMORZATO)
+        for indice, cimelio in enumerate(ordine):
+            col = indice % colonne
+            riga = indice // colonne
+            rect = pygame.Rect(
+                self.contenuto.x + margine + col * (larghezza + gap),
+                y0 + 78 + riga * (altezza + gap),
+                larghezza,
+                altezza,
+            )
+            self._carta_collezione(rect, cimelio)
+        righe = math.ceil(len(ordine) / colonne)
+        fine = y0 + 78 + righe * (altezza + gap) + self.scroll
+        self.scroll_massimo = max(0, fine - self.contenuto.bottom)
         self.scroll = min(self.scroll, self.scroll_massimo)
         self.schermo.set_clip(None)
 
-    def _riga_cimelio(self, cimelio, y, posseduto):
-        rect = pygame.Rect(self.contenuto.x + 16, y, self.contenuto.w - 32, 96)
-        visibile = self.contenuto.colliderect(rect)
-        if visibile:
-            bordo = COLORE_RARITA[cimelio.rarita] if posseduto else (51, 65, 85)
-            self._pannello(rect, bordo)
-            self._icona(cimelio, pygame.Rect(rect.x + 12, rect.y + 22, 52, 52))
-            colore = TESTO if posseduto else SMORZATO
-            self._testo(cimelio.nome, (rect.x + 78, rect.y + 8), self.font, colore)
-            quantita = self.stato.inventario.get(cimelio.id, 0)
-            self._testo(
-                f"{cimelio.rarita} · {cimelio.insieme} · valore {cimelio.valore_base} · rendita {cimelio.rendita}",
-                (rect.x + 78, rect.y + 32),
-                self.font_piccolo,
-                COLORE_RARITA[cimelio.rarita] if posseduto else SMORZATO,
+    def _carta_collezione(self, rect, cimelio):
+        if not self.contenuto.colliderect(rect):
+            return
+        quantita = self.stato.inventario.get(cimelio.id, 0)
+        posseduto = quantita > 0
+        bordo = COLORE_RARITA[cimelio.rarita] if posseduto else (48, 56, 70)
+        self._pannello(rect, bordo, (16, 22, 34) if posseduto else (14, 18, 28))
+        if posseduto:
+            pygame.draw.rect(self.schermo, COLORE_RARITA[cimelio.rarita], (rect.x + 12, rect.y + 12, rect.w - 24, 5), border_radius=2)
+        self._medaglione(cimelio, (rect.centerx, rect.y + 78), 36, spento=not posseduto)
+        colore_nome = TESTO if posseduto else (120, 128, 142)
+        self._righe_centrate(cimelio.nome, rect.centerx, rect.y + 124, rect.w - 20, self.font, colore_nome)
+        self._righe_centrate(
+            f"{cimelio.rarita}  ·  {cimelio.insieme}",
+            rect.centerx,
+            rect.y + 168,
+            rect.w - 16,
+            self.font_piccolo,
+            COLORE_RARITA[cimelio.rarita] if posseduto else SMORZATO,
+        )
+        if not posseduto:
+            self._righe_centrate("ancora da trovare", rect.centerx, rect.bottom - 36, rect.w - 16, self.font_piccolo, (90, 98, 112))
+            return
+        self._testo(f"×{quantita}", (rect.x + 14, rect.y + 16), self.font_piccolo, ORO)
+        if cimelio.rarita != "Mitico":
+            self._pulsante(
+                pygame.Rect(rect.x + 12, rect.bottom - 48, (rect.w - 32) // 2, 34),
+                "Fondi 3",
+                lambda i=cimelio.id: self.stato.fondi(i),
+                attivo=quantita >= 3,
+                ritagliato=True,
             )
-            self._paragrafo(
-                cimelio.descrizione,
-                pygame.Rect(rect.x + 78, rect.y + 52, rect.w - 420, 36),
-                self.font_piccolo,
-                SMORZATO,
+            self._pulsante(
+                pygame.Rect(rect.x + 20 + (rect.w - 32) // 2, rect.bottom - 48, (rect.w - 32) // 2, 34),
+                f"Vendi {prezzo_vendita(cimelio.valore_base)}",
+                lambda i=cimelio.id: self.stato.vendi(i),
+                ritagliato=True,
             )
-            if posseduto:
-                self._testo(f"×{quantita}", (rect.right - 400, rect.y + 12), self.font_piccolo, SMORZATO)
-                self._pulsante(
-                    pygame.Rect(rect.right - 150, rect.y + 28, 130, 40),
-                    f"Vendi {prezzo_vendita(cimelio.valore_base)}",
-                    lambda i=cimelio.id: self.stato.vendi(i),
-                    ritagliato=True,
-                )
-                if cimelio.rarita != "Mitico":
-                    self._pulsante(
-                        pygame.Rect(rect.right - 310, rect.y + 28, 148, 40),
-                        "Fondi 3",
-                        lambda i=cimelio.id: self.stato.fondi(i),
-                        attivo=quantita >= 3,
-                        ritagliato=True,
-                    )
-        return y + 106
+        else:
+            self._pulsante(
+                pygame.Rect(rect.x + 16, rect.bottom - 48, rect.w - 32, 34),
+                f"Vendi {prezzo_vendita(cimelio.valore_base)}",
+                lambda i=cimelio.id: self.stato.vendi(i),
+                primario=True,
+                ritagliato=True,
+            )
 
 
 def controlli():
