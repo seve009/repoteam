@@ -122,6 +122,15 @@ TAGLIO_SIGILLO = 220
 SALVATAGGIO_FORZATO = None
 
 
+def cartella_asset():
+    """Cartella delle illustrazioni, anche dentro l'eseguibile impacchettato."""
+    if getattr(sys, "frozen", False):
+        base = getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
+    else:
+        base = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base, "assets")
+
+
 def percorso_salvataggio():
     """save.json nella cartella da cui si lancia il gioco."""
     if SALVATAGGIO_FORZATO:
@@ -1029,8 +1038,12 @@ class UIManager:
         self.font_titolo = _font(26, True, serif=True)
         self.font_medio = _font(18, True, serif=True)
         self.tempo = 0.0
+        self.immagini = {}
+        self._scala = {}
+        self.sfondo_foto = None
         self.stato = stato or GameState.carica()
         self.sfondo = self._prepara_sfondo()
+        self._carica_immagini()
         self.scheda = "casa"
         self.modalita = None
         self.scavo = None
@@ -1216,6 +1229,45 @@ class UIManager:
             pygame.draw.circle(superficie, (196, 164, 92), punto, 1)
         return superficie
 
+    def _carica_immagini(self):
+        cartella = cartella_asset()
+        if not os.path.isdir(cartella):
+            return
+        for nome in os.listdir(cartella):
+            if not nome.lower().endswith((".jpg", ".png")):
+                continue
+            chiave = os.path.splitext(nome)[0]
+            self.immagini[chiave] = pygame.image.load(os.path.join(cartella, nome)).convert()
+        if "bg_salon" in self.immagini:
+            self.sfondo_foto = pygame.transform.smoothscale(self.immagini["bg_salon"], (LARGHEZZA, ALTEZZA))
+
+    def _scala_img(self, chiave, dimensione):
+        if chiave not in self.immagini:
+            return None
+        voce = (chiave, dimensione[0], dimensione[1])
+        if voce not in self._scala:
+            self._scala[voce] = pygame.transform.smoothscale(self.immagini[chiave], dimensione)
+        return self._scala[voce]
+
+    def _blit_foto(self, chiave, rect, raggio=16, bordo=None, spento=False):
+        """Incolla una illustrazione con angoli morbidi. Ritorna False se manca il file."""
+        foto = self._scala_img(chiave, (rect.w, rect.h))
+        if foto is None:
+            return False
+        tela = pygame.Surface(rect.size, pygame.SRCALPHA)
+        tela.blit(foto, (0, 0))
+        maschera = pygame.Surface(rect.size, pygame.SRCALPHA)
+        pygame.draw.rect(maschera, (255, 255, 255, 255), maschera.get_rect(), border_radius=raggio)
+        tela.blit(maschera, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+        if spento:
+            velo = pygame.Surface(rect.size, pygame.SRCALPHA)
+            velo.fill((6, 8, 16, 145))
+            tela.blit(velo, (0, 0))
+        self.schermo.blit(tela, rect.topleft)
+        if bordo:
+            pygame.draw.rect(self.schermo, bordo, rect, width=2, border_radius=raggio)
+        return True
+
     def _pulsante(self, rect, testo, funzione, attivo=True, primario=False, ritagliato=False):
         hover = attivo and rect.collidepoint(self.mouse)
         disegno = rect.move(0, -1) if hover and attivo else rect
@@ -1298,7 +1350,10 @@ class UIManager:
     def _disegna(self):
         self.hit = []
         self.mouse = pygame.mouse.get_pos()
-        self.schermo.blit(self.sfondo, (0, 0))
+        if self.sfondo_foto:
+            self.schermo.blit(self.sfondo_foto, (0, 0))
+        else:
+            self.schermo.blit(self.sfondo, (0, 0))
         self._barra()
         self._testata()
         if self.selettore is not None:
@@ -1471,8 +1526,10 @@ class UIManager:
             self._pannello(rect, bordo, (28, 22, 14) if acceso else (16, 22, 34))
             if id_:
                 cimelio = CATALOGO[id_]
-                self._medaglione(cimelio, (rect.centerx, rect.y + 58), 36)
-                self._righe_centrate(cimelio.nome, rect.centerx, rect.y + 104, rect.w - 16, self.font_piccolo, TESTO)
+                foto = pygame.Rect(rect.x + 8, rect.y + 8, rect.w - 16, 100)
+                if not self._blit_foto(f"relic_{cimelio.id}", foto, 12, ORO if acceso else COLORE_RARITA[cimelio.rarita]):
+                    self._medaglione(cimelio, foto.center, 32)
+                self._righe_centrate(cimelio.nome, rect.centerx, rect.y + 114, rect.w - 12, self.font_piccolo, TESTO)
                 if interattiva:
                     self.hit.append((rect, lambda s=indice: self.stato.case.togli(s), True, False))
             else:
@@ -1559,26 +1616,21 @@ class UIManager:
             self._testo("In rosso non si compra. Vendi un pezzo dalla collezione.", (self.contenuto.x + 28, self.contenuto.y + 56), self.font_piccolo, PERICOLO)
         else:
             self._testo("Tagli il sigillo, il bordo prende il colore della rarità più alta.", (self.contenuto.x + 28, self.contenuto.y + 56), self.font_piccolo, SMORZATO)
-        vesti = [
-            ((86, 58, 36), (214, 170, 96)),
-            ((32, 58, 72), (232, 204, 140)),
-            ((78, 22, 36), (225, 70, 96)),
-        ]
+        chiavi = ("pack_dust", "pack_antique", "pack_reliquary")
         larghezza = (self.contenuto.w - 80) // 3
         for indice, pacchetto in enumerate(PACCHETTI):
-            rect = pygame.Rect(self.contenuto.x + 24 + indice * (larghezza + 16), self.contenuto.y + 96, larghezza, 520)
-            stoffa, filo = vesti[indice]
-            self._pannello(rect, filo, stoffa)
-            nastro = pygame.Rect(rect.centerx - 18, rect.y + 28, 36, 150)
-            pygame.draw.rect(self.schermo, filo, nastro, border_radius=4)
-            pygame.draw.circle(self.schermo, (120, 28, 36), (rect.centerx, rect.y + 196), 34)
-            pygame.draw.circle(self.schermo, (255, 214, 150), (rect.centerx, rect.y + 196), 34, 2)
-            self._righe_centrate(pacchetto["nome"], rect.centerx, rect.y + 250, rect.w - 36, self.font_medio, (255, 236, 200))
-            self._righe_centrate(f"{pacchetto['costo']} monete", rect.centerx, rect.y + 292, rect.w - 36, self.font_grande, TESTO)
-            self._paragrafo(pacchetto["testo"], pygame.Rect(rect.x + 24, rect.y + 350, rect.w - 48, 70), self.font_piccolo, (232, 220, 196))
+            rect = pygame.Rect(self.contenuto.x + 24 + indice * (larghezza + 16), self.contenuto.y + 96, larghezza, 560)
+            if not self._blit_foto(chiavi[indice], rect, 18, (214, 176, 96)):
+                self._pannello(rect, ORO)
+            fascia = pygame.Surface((rect.w, 168), pygame.SRCALPHA)
+            for riga in range(168):
+                pygame.draw.line(fascia, (6, 8, 14, int(230 * riga / 168)), (0, riga), (rect.w, riga))
+            self.schermo.blit(fascia, (rect.x, rect.bottom - 168))
+            self._righe_centrate(pacchetto["nome"], rect.centerx, rect.bottom - 150, rect.w - 28, self.font_medio, (255, 236, 200))
+            self._righe_centrate(f"{pacchetto['costo']} monete", rect.centerx, rect.bottom - 116, rect.w - 28, self.font_grande, TESTO)
             puo = (not self.stato.in_rosso()) and self.stato.monete >= pacchetto["costo"]
             self._pulsante(
-                pygame.Rect(rect.x + 24, rect.bottom - 72, rect.w - 48, 48),
+                pygame.Rect(rect.x + 22, rect.bottom - 68, rect.w - 44, 46),
                 "Compra e apri",
                 lambda p=pacchetto["id"]: self._compra(p),
                 attivo=puo,
@@ -1592,19 +1644,19 @@ class UIManager:
         self._pannello(rect, colore)
         self._testo(apertura.pacchetto["nome"], (rect.x + 24, rect.y + 16), self.font_titolo, ORO)
         if apertura.fase == "taglio":
-            self._testo("Trascina o clicca la ceralacca.", (rect.x + 28, rect.y + 58), self.font, SMORZATO)
-            pacco = pygame.Rect(rect.centerx - 170, rect.y + 130, 340, 280)
-            pygame.draw.rect(self.schermo, (62, 40, 24), pacco, border_radius=16)
-            pygame.draw.rect(self.schermo, (214, 170, 90), pacco, width=2, border_radius=16)
-            pygame.draw.rect(self.schermo, (214, 170, 90), (pacco.centerx - 16, pacco.y + 24, 32, pacco.h - 48))
-            sigillo = pygame.Rect(pacco.x + 36, pacco.centery - 28, pacco.w - 72, 56)
+            self._testo("Trascina o clicca la ceralacca.", (rect.x + 28, rect.y + 58), self.font, (232, 220, 190))
+            chiave = {"polveroso": "pack_dust", "antiquario": "pack_antique", "reliquiario": "pack_reliquary"}[apertura.pacchetto["id"]]
+            pacco = pygame.Rect(rect.centerx - 150, rect.y + 100, 300, 420)
+            if not self._blit_foto(chiave, pacco, 16, (214, 176, 96)):
+                self._pannello(pacco, ORO)
+            sigillo = pygame.Rect(pacco.centerx - 70, pacco.centery - 10, 140, 90)
             apertura.sigillo = sigillo
-            pygame.draw.ellipse(self.schermo, (128, 28, 36), sigillo)
             progresso = min(1.0, apertura.taglio / TAGLIO_SIGILLO)
-            if progresso:
-                taglio = pygame.Rect(sigillo.x, sigillo.y, int(sigillo.w * progresso), sigillo.h)
-                pygame.draw.ellipse(self.schermo, (255, 214, 140), taglio)
-            self._righe_centrate("SIGILLO", sigillo.centerx, sigillo.centery - 8, sigillo.w - 8, self.font_piccolo, (40, 12, 14))
+            if progresso < 1:
+                velo = pygame.Surface(sigillo.size, pygame.SRCALPHA)
+                pygame.draw.ellipse(velo, (255, 220, 150, int(90 * (1 - progresso))), velo.get_rect())
+                self.schermo.blit(velo, sigillo.topleft)
+            self._righe_centrate("taglia qui", sigillo.centerx, sigillo.bottom + 6, 140, self.font_piccolo, (255, 228, 170))
         else:
             apertura.sigillo = pygame.Rect(0, 0, 0, 0)
             centro = (rect.centerx, rect.y + 150)
@@ -1641,12 +1693,13 @@ class UIManager:
             carta = pygame.Rect(rect.x + 70 + indice * 280, rect.y + 150, 250, 340)
             cimelio = CATALOGO[apertura.ids[indice]]
             if indice < apertura.mostrate:
-                self._pannello(carta, COLORE_RARITA[cimelio.rarita], (16, 20, 32))
-                pygame.draw.rect(self.schermo, COLORE_RARITA[cimelio.rarita], (carta.x + 14, carta.y + 14, carta.w - 28, 6), border_radius=3)
-                self._medaglione(cimelio, (carta.centerx, carta.y + 110), 52)
-                self._righe_centrate(cimelio.nome, carta.centerx, carta.y + 180, carta.w - 28, self.font, TESTO)
-                self._righe_centrate(cimelio.rarita, carta.centerx, carta.y + 230, carta.w - 28, self.font_piccolo, COLORE_RARITA[cimelio.rarita])
-                self._righe_centrate(cimelio.insieme, carta.centerx, carta.y + 252, carta.w - 28, self.font_piccolo, SMORZATO)
+                self._pannello(carta, COLORE_RARITA[cimelio.rarita], (10, 12, 20))
+                foto = pygame.Rect(carta.x + 12, carta.y + 12, carta.w - 24, 210)
+                if not self._blit_foto(f"relic_{cimelio.id}", foto, 12, COLORE_RARITA[cimelio.rarita]):
+                    self._medaglione(cimelio, foto.center, 48)
+                self._righe_centrate(cimelio.nome, carta.centerx, carta.y + 232, carta.w - 20, self.font, TESTO)
+                self._righe_centrate(cimelio.rarita, carta.centerx, carta.y + 274, carta.w - 20, self.font_piccolo, COLORE_RARITA[cimelio.rarita])
+                self._righe_centrate(cimelio.insieme, carta.centerx, carta.y + 294, carta.w - 20, self.font_piccolo, SMORZATO)
             else:
                 bordo = COLORE_RARITA[apertura.rarita] if indice == apertura.mostrate else (60, 68, 84)
                 self._pannello(carta, bordo, (22, 18, 32))
@@ -1905,8 +1958,6 @@ class UIManager:
             self.font_piccolo,
             SMORZATO,
         )
-        if not posseduti:
-            self._testo("Ancora nessuna carta in mano.", (self.contenuto.x + margine, y0 + 64), self.font, SMORZATO)
         for indice, cimelio in enumerate(ordine):
             col = indice % colonne
             riga = indice // colonne
@@ -1929,16 +1980,16 @@ class UIManager:
         quantita = self.stato.inventario.get(cimelio.id, 0)
         posseduto = quantita > 0
         bordo = COLORE_RARITA[cimelio.rarita] if posseduto else (48, 56, 70)
-        self._pannello(rect, bordo, (16, 22, 34) if posseduto else (14, 18, 28))
-        if posseduto:
-            pygame.draw.rect(self.schermo, COLORE_RARITA[cimelio.rarita], (rect.x + 12, rect.y + 12, rect.w - 24, 5), border_radius=2)
-        self._medaglione(cimelio, (rect.centerx, rect.y + 78), 36, spento=not posseduto)
-        colore_nome = TESTO if posseduto else (120, 128, 142)
-        self._righe_centrate(cimelio.nome, rect.centerx, rect.y + 124, rect.w - 20, self.font, colore_nome)
+        self._pannello(rect, bordo, (12, 16, 26))
+        foto = pygame.Rect(rect.x + 10, rect.y + 10, rect.w - 20, 132)
+        if not self._blit_foto(f"relic_{cimelio.id}", foto, 12, bordo, spento=not posseduto):
+            self._medaglione(cimelio, foto.center, 36, spento=not posseduto)
+        colore_nome = TESTO if posseduto else (150, 156, 168)
+        self._righe_centrate(cimelio.nome, rect.centerx, rect.y + 148, rect.w - 16, self.font, colore_nome)
         self._righe_centrate(
             f"{cimelio.rarita}  ·  {cimelio.insieme}",
             rect.centerx,
-            rect.y + 168,
+            rect.y + 190,
             rect.w - 16,
             self.font_piccolo,
             COLORE_RARITA[cimelio.rarita] if posseduto else SMORZATO,
