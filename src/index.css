@@ -1,0 +1,290 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Fraunces", "Iowan Old Style", Palatino, Georgia, serif;
+  --color-ink: #0c0b09;
+  --color-panel: #16130f;
+  --color-panel-2: #221c16;
+  --color-line: #3a3226;
+  --color-gold: #e4c56a;
+  --color-ivory: #f6f0e6;
+  --color-mute: #a89b88;
+  --color-soil: #3a2c20;
+  --color-danger: #e15b64;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(900px 420px at 50% -12%, rgba(228, 197, 106, 0.16), transparent 60%),
+    var(--color-ink);
+  color: var(--color-ivory);
+}
+
+body::before {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  opacity: 0.18;
+  background-image: radial-gradient(rgba(255, 244, 220, 0.16) 0.6px, transparent 0.6px);
+  background-size: 3px 3px;
+  mix-blend-mode: overlay;
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: default;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #3a3226;
+  border-radius: 99px;
+}
+
+@layer components {
+  .btn {
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--color-gold) 38%, transparent);
+    background: transparent;
+    padding: 0.55rem 1rem;
+    font-size: 0.875rem;
+    letter-spacing: 0.02em;
+    transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+  }
+
+  .btn:hover:not(:disabled) {
+    border-color: var(--color-gold);
+    color: var(--color-gold);
+  }
+
+  .btn:disabled {
+    opacity: 0.4;
+  }
+
+  .btn-oro {
+    border-radius: 999px;
+    border: 0;
+    background: var(--color-gold);
+    color: var(--color-ink);
+    padding: 0.55rem 1.1rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    transition: filter 0.15s ease;
+  }
+
+  .btn-oro:hover:not(:disabled) {
+    filter: brightness(1.08);
+  }
+
+  .btn-oro:disabled {
+    opacity: 0.4;
+  }
+
+  .scheda {
+    border: 1px solid var(--color-line);
+    background: color-mix(in srgb, var(--color-panel) 92%, transparent);
+  }
+}
+
+.card-cimelio {
+  position: relative;
+  display: flex;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 14px;
+  border: 1px solid var(--card-bordo, var(--color-line));
+  background: var(--card-sfondo, var(--color-panel));
+  padding: 0.75rem;
+  text-align: left;
+  box-shadow: var(--card-ombra, none);
+}
+
+.card-cimelio.selezionata {
+  outline: 1px solid var(--color-gold);
+  outline-offset: 2px;
+}
+
+.card-cimelio.foil::after {
+  content: "";
+  position: absolute;
+  inset: -20% auto -20% -40%;
+  width: 45%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.28), transparent);
+  transform: skewX(-16deg);
+  animation: foil 3.4s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes foil {
+  0% { transform: translateX(0) skewX(-16deg); }
+  55%, 100% { transform: translateX(320%) skewX(-16deg); }
+}
+
+.flip {
+  perspective: 1200px;
+  aspect-ratio: 3 / 4;
+}
+
+.flip-inner {
+  position: relative;
+  height: 100%;
+  transform-style: preserve-3d;
+  transition: transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.flip.girata .flip-inner {
+  transform: rotateY(180deg);
+}
+
+.faccia {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+}
+
+.fronte {
+  transform: rotateY(180deg);
+}
+
+.dorso {
+  display: grid;
+  height: 100%;
+  place-items: center;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--color-gold) 50%, transparent);
+  background:
+    radial-gradient(circle at 50% 42%, rgba(228, 197, 106, 0.18), transparent 42%),
+    linear-gradient(160deg, #2a241c, #100e0c);
+}
+
+.pacco {
+  position: relative;
+  overflow: hidden;
+  border-radius: 18px;
+  min-height: 280px;
+  padding: 1.25rem;
+}
+
+.pacco-polveroso {
+  background:
+    linear-gradient(180deg, rgba(255, 236, 200, 0.08), transparent 30%),
+    linear-gradient(160deg, #8a704c, #3d3122 55%, #241c14);
+  box-shadow: inset 0 0 0 1px rgba(255, 224, 170, 0.25);
+}
+
+.pacco-antiquario {
+  background:
+    linear-gradient(180deg, rgba(228, 197, 106, 0.16), transparent 28%),
+    linear-gradient(160deg, #4a3424, #1c140f 60%);
+  box-shadow: inset 0 0 0 1px rgba(228, 197, 106, 0.35);
+}
+
+.pacco-reliquiario {
+  background:
+    radial-gradient(circle at 50% 38%, rgba(225, 91, 100, 0.28), transparent 36%),
+    linear-gradient(160deg, #241418, #0c0a0b 62%);
+  box-shadow: inset 0 0 0 1px rgba(225, 91, 100, 0.45);
+}
+
+.zolla {
+  aspect-ratio: 1;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.35);
+  background: #3a2c20;
+  box-shadow: inset 0 1px 0 rgba(255, 220, 170, 0.08);
+  font-family: var(--font-display);
+  font-size: 1rem;
+}
+
+.zolla.aperta {
+  background: #16130f;
+  color: var(--color-mute);
+  box-shadow: none;
+}
+
+.zolla.pepita {
+  background: #3d3418;
+  color: var(--color-gold);
+}
+
+.zolla.trappola {
+  background: #4a1e22;
+  color: #ffb4b8;
+}
+
+.zolla.bandiera {
+  color: var(--color-gold);
+}
+
+.barra-caveau {
+  position: relative;
+  height: 28px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #2a241c, #100e0c);
+  box-shadow: inset 0 0 0 1px rgba(228, 197, 106, 0.28);
+}
+
+.zona-verde {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: color-mix(in srgb, #7dcea0 70%, transparent);
+}
+
+.ago {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 3px;
+  border-radius: 99px;
+  background: var(--color-ivory);
+  box-shadow: 0 0 12px rgba(246, 240, 230, 0.8);
+  transform: translateX(-50%);
+}
+
+.lampada {
+  height: 10px;
+  width: 42px;
+  border-radius: 99px;
+  background: #2a241c;
+  box-shadow: inset 0 0 0 1px #3a3226;
+}
+
+.lampada.accesa {
+  background: var(--color-gold);
+  box-shadow: 0 0 12px rgba(228, 197, 106, 0.7);
+}
+
+.lampada.attiva {
+  background: #f6f0e6;
+}
+
+.lampada.rossa {
+  background: var(--color-danger);
+  box-shadow: 0 0 12px rgba(225, 91, 100, 0.7);
+}
