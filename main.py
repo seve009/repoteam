@@ -113,7 +113,7 @@ PACCHETTI = [
 LARGHEZZA, ALTEZZA = 1440, 900
 BARRA = 248
 TESTA = 64
-MESSAGGIO_H = 36
+MESSAGGIO_H = 0
 GRIGLIA = 8
 ERRORI_CONSENTITI = 2
 AZIONI_PER_AFFITTO = 5
@@ -1051,8 +1051,13 @@ class UIManager:
         self.asta = None
         self.apertura = None
         self.selettore = None
-        self.scroll = 0
+        self.scroll = 0.0
+        self.scroll_obiettivo = 0.0
         self.scroll_massimo = 0
+        self.entrata = 1.0
+        self.toast_vita = 0.0
+        self._ultimo_messaggio = ""
+        self._velo = None
         self.hit = []
         self.reset_fino_a = 0
         self.vivo = True
@@ -1095,9 +1100,11 @@ class UIManager:
                     self.apertura.taglia(evento.pos, 42)
                 self._click(evento.pos)
             elif evento.button == 4:
-                self.scroll = max(0, self.scroll - 48)
+                self._ruota(-70)
             elif evento.button == 5:
-                self.scroll = min(self.scroll_massimo, self.scroll + 48)
+                self._ruota(70)
+        elif evento.type == pygame.MOUSEWHEEL:
+            self._ruota(-evento.y * 78)
         elif evento.type == pygame.KEYDOWN and evento.key == pygame.K_SPACE:
             if self.modalita == "scasso" and self.scasso and not self.scasso.finita:
                 self.scasso.tenta()
@@ -1114,8 +1121,21 @@ class UIManager:
             funzione()
             return
 
+    def _ruota(self, delta):
+        self.scroll_obiettivo = max(0, min(self.scroll_massimo, self.scroll_obiettivo + delta))
+
     def _aggiorna(self, dt):
         self.tempo += dt
+        self.entrata = min(1.0, self.entrata + dt * 5.5)
+        if self.stato.messaggio != self._ultimo_messaggio:
+            self._ultimo_messaggio = self.stato.messaggio
+            self.toast_vita = 4.0
+        elif self.toast_vita > 0:
+            self.toast_vita = max(0.0, self.toast_vita - dt)
+        self.scroll_obiettivo = max(0.0, min(float(self.scroll_massimo), self.scroll_obiettivo))
+        self.scroll += (self.scroll_obiettivo - self.scroll) * min(1.0, dt * 16)
+        if abs(self.scroll_obiettivo - self.scroll) < 0.35:
+            self.scroll = self.scroll_obiettivo
         if self.scasso and self.modalita == "scasso":
             self.scasso.aggiorna(dt)
             if self.scasso.finita and not self.scasso.risolta:
@@ -1250,23 +1270,37 @@ class UIManager:
         return self._scala[voce]
 
     def _blit_foto(self, chiave, rect, raggio=16, bordo=None, spento=False):
-        """Incolla una illustrazione con angoli morbidi. Ritorna False se manca il file."""
-        foto = self._scala_img(chiave, (rect.w, rect.h))
-        if foto is None:
+        """Illustrazione già ritagliata e tenuta in memoria: niente superfici nuove a ogni frame."""
+        if chiave not in self.immagini or rect.w < 2 or rect.h < 2:
             return False
-        tela = pygame.Surface(rect.size, pygame.SRCALPHA)
-        tela.blit(foto, (0, 0))
-        maschera = pygame.Surface(rect.size, pygame.SRCALPHA)
-        pygame.draw.rect(maschera, (255, 255, 255, 255), maschera.get_rect(), border_radius=raggio)
-        tela.blit(maschera, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
-        if spento:
-            velo = pygame.Surface(rect.size, pygame.SRCALPHA)
-            velo.fill((6, 8, 16, 145))
-            tela.blit(velo, (0, 0))
+        voce = (chiave, rect.w, rect.h, raggio, spento)
+        tela = self._scala.get(voce)
+        if tela is None:
+            foto = self._scala_img(chiave, (rect.w, rect.h))
+            tela = pygame.Surface(rect.size, pygame.SRCALPHA)
+            tela.blit(foto, (0, 0))
+            maschera = pygame.Surface(rect.size, pygame.SRCALPHA)
+            pygame.draw.rect(maschera, (255, 255, 255, 255), maschera.get_rect(), border_radius=raggio)
+            tela.blit(maschera, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+            if spento:
+                velo = pygame.Surface(rect.size, pygame.SRCALPHA)
+                velo.fill((6, 8, 16, 145))
+                tela.blit(velo, (0, 0))
+            self._scala[voce] = tela
         self.schermo.blit(tela, rect.topleft)
         if bordo:
             pygame.draw.rect(self.schermo, bordo, rect, width=2, border_radius=raggio)
         return True
+
+    def _fascia_bassa(self, larghezza, altezza=150):
+        voce = ("fascia", larghezza, altezza)
+        fascia = self._scala.get(voce)
+        if fascia is None:
+            fascia = pygame.Surface((larghezza, altezza), pygame.SRCALPHA)
+            for riga in range(altezza):
+                pygame.draw.line(fascia, (6, 8, 14, int(230 * riga / altezza)), (0, riga), (larghezza, riga))
+            self._scala[voce] = fascia
+        return fascia
 
     def _pulsante(self, rect, testo, funzione, attivo=True, primario=False, ritagliato=False):
         hover = attivo and rect.collidepoint(self.mouse)
@@ -1356,6 +1390,9 @@ class UIManager:
             self.schermo.blit(self.sfondo, (0, 0))
         self._barra()
         self._testata()
+        curva = 1 - (1 - min(1.0, self.entrata)) ** 3
+        base = self.contenuto
+        self.contenuto = base.move(int((1 - curva) * 28), 0)
         if self.selettore is not None:
             self._disegna_casa(interattiva=False)
             self._disegna_selettore()
@@ -1373,12 +1410,23 @@ class UIManager:
             self._disegna_lavori()
         elif self.scheda == "collezione":
             self._disegna_collezione()
+        self.contenuto = base
+        self._toast()
+        sopra = any(attivo and rettangolo.collidepoint(self.mouse) for rettangolo, _, attivo, _ in self.hit)
+        try:
+            pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND if sopra else pygame.SYSTEM_CURSOR_ARROW)
+        except pygame.error:
+            pass
 
     def _vai(self, scheda):
         if self.modalita or self.apertura:
             return
+        if scheda != self.scheda:
+            self.entrata = 0.0
         self.scheda = scheda
-        self.scroll = 0
+        self.scroll = 0.0
+        self.scroll_obiettivo = 0.0
+        self.scroll_massimo = 0
         self.selettore = None
 
     def _reset(self):
@@ -1394,7 +1442,9 @@ class UIManager:
         self.apertura = None
         self.selettore = None
         self.scheda = "casa"
-        self.scroll = 0
+        self.scroll = 0.0
+        self.scroll_obiettivo = 0.0
+        self.entrata = 0.0
         self.reset_fino_a = 0
 
     def _barra(self):
@@ -1456,12 +1506,27 @@ class UIManager:
             self.schermo.blit(titolo, (scatola.x + 14, scatola.y + 4))
             self.schermo.blit(cifra, (scatola.x + 14, scatola.y + 20))
             x = scatola.right + 12
-        colore = PERICOLO if self.stato.messaggio_negativo or self.stato.in_rosso() else (196, 184, 156)
-        testo = self.stato.messaggio
+
+    def _toast(self):
+        """Il messaggio sta in basso, non sopra il titolo della schermata."""
+        urgente = self.stato.in_rosso() or self.stato.bloccato_senza_cimeli()
+        if self.toast_vita <= 0 and not urgente:
+            return
         if self.stato.bloccato_senza_cimeli():
-            testo = "Non puoi pagare un lavoro e non hai cimeli da vendere. Resetta la partita."
-            colore = PERICOLO
-        self._paragrafo(testo, pygame.Rect(BARRA + 24, TESTA + 8, LARGHEZZA - BARRA - 48, 24), self.font_piccolo, colore)
+            testo = "Non puoi pagare un lavoro e non hai cimeli. Resetta la partita."
+            negativo = True
+        else:
+            testo = self.stato.messaggio
+            negativo = self.stato.messaggio_negativo or self.stato.in_rosso()
+        if not testo:
+            return
+        immagine = self.font_piccolo.render(testo, True, (255, 228, 214) if negativo else (236, 228, 206))
+        scatola = immagine.get_rect()
+        scatola.midbottom = (BARRA + (LARGHEZZA - BARRA) // 2, ALTEZZA - 22)
+        pannello = scatola.inflate(28, 16)
+        pygame.draw.rect(self.schermo, (28, 16, 16) if negativo else (16, 18, 28), pannello, border_radius=12)
+        pygame.draw.rect(self.schermo, PERICOLO if negativo else ORO, pannello, width=1, border_radius=12)
+        self.schermo.blit(immagine, scatola)
 
     def _disegna_casa(self, interattiva):
         casa = self.stato.case.casa()
@@ -1545,9 +1610,10 @@ class UIManager:
         self.scroll = 0
 
     def _disegna_selettore(self):
-        velo = pygame.Surface((LARGHEZZA, ALTEZZA), pygame.SRCALPHA)
-        velo.fill((2, 6, 23, 180))
-        self.schermo.blit(velo, (0, 0))
+        if self._velo is None:
+            self._velo = pygame.Surface((LARGHEZZA, ALTEZZA), pygame.SRCALPHA)
+            self._velo.fill((2, 6, 23, 175))
+        self.schermo.blit(self._velo, (0, 0))
         finestra = pygame.Rect(BARRA + 40, 120, LARGHEZZA - BARRA - 80, ALTEZZA - 180)
         self._pannello(finestra, ORO)
         self._testo("Scegli un cimelio da esporre", (finestra.x + 20, finestra.y + 16), self.font_titolo, ORO)
@@ -1622,11 +1688,8 @@ class UIManager:
             rect = pygame.Rect(self.contenuto.x + 24 + indice * (larghezza + 16), self.contenuto.y + 96, larghezza, 560)
             if not self._blit_foto(chiavi[indice], rect, 18, (214, 176, 96)):
                 self._pannello(rect, ORO)
-            fascia = pygame.Surface((rect.w, 168), pygame.SRCALPHA)
-            for riga in range(168):
-                pygame.draw.line(fascia, (6, 8, 14, int(230 * riga / 168)), (0, riga), (rect.w, riga))
-            self.schermo.blit(fascia, (rect.x, rect.bottom - 168))
-            self._righe_centrate(pacchetto["nome"], rect.centerx, rect.bottom - 150, rect.w - 28, self.font_medio, (255, 236, 200))
+            self.schermo.blit(self._fascia_bassa(rect.w), (rect.x, rect.bottom - 150))
+            self._righe_centrate(pacchetto["nome"], rect.centerx, rect.bottom - 136, rect.w - 28, self.font_medio, (255, 236, 200))
             self._righe_centrate(f"{pacchetto['costo']} monete", rect.centerx, rect.bottom - 116, rect.w - 28, self.font_grande, TESTO)
             puo = (not self.stato.in_rosso()) and self.stato.monete >= pacchetto["costo"]
             self._pulsante(
